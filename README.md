@@ -5,7 +5,7 @@ Python Playwright and Pytest framework for extracting AccuWeather 10-day forecas
 ## What This Project Demonstrates
 
 - Playwright browser automation using a page object model.
-- Deterministic unit tests separated from opt-in live browser tests.
+- Deterministic unit tests plus live browser extraction tests.
 - Environment-driven configuration with validation for common flags.
 - Retry handling for flaky navigation and extraction steps.
 - Weather data validation, structured file output, and HTML reporting.
@@ -46,21 +46,20 @@ set HEADLESS=true
 These tests validate conversion, file output, report generation, configuration parsing, city selection, and parser logic without opening AccuWeather:
 
 ```bash
-pytest
+pytest -m "not live"
 ```
 
 Expected baseline:
 
 ```text
-60+ passed, live tests skipped unless explicitly enabled
+Fast unit tests pass without opening AccuWeather
 ```
 
 ## Run Live AccuWeather Extraction
 
-Live scraping is opt-in because AccuWeather layout, rate limits, and anti-bot behavior can change:
+Live scraping is enabled by default. This runs the test suite, opens AccuWeather, generates CSV/JSON outputs, and writes an HTML report:
 
 ```bash
-set RUN_LIVE_WEATHER_TESTS=true
 python run_tests.py
 ```
 
@@ -123,7 +122,6 @@ The summary report includes a data-completeness section that lists missing forec
 The random-city live test samples cities from the configured city pool, opens AccuWeather, searches by city name, and writes each city to its own output folder. It is disabled by default.
 
 ```bash
-set RUN_LIVE_WEATHER_TESTS=true
 set RANDOM_CITY_COUNT=3
 set FORECAST_DAYS=10
 pytest tests/test_weather_forecast_live.py --browser-channel=chrome --headed -s
@@ -149,9 +147,9 @@ GitHub Actions is included at `.github/workflows/weather-automation.yml` and run
 Linux cron example:
 
 ```bash
-0 * * * * cd /path/to/weather-automation && RUN_LIVE_WEATHER_TESTS=true python run_tests.py
+0 * * * * cd /path/to/weather-automation && python run_tests.py
 ```
 
 ## Notes For Reviewers
 
-The deterministic suite is the stable interview baseline. Live tests prove the browser workflow, but they depend on AccuWeather availability and page structure, so they are intentionally gated by environment variables.
+For interview review, run the CLI command with only city and country to get the 10-day weather output. Live tests prove the browser workflow, but they still depend on AccuWeather availability and page structure.
