@@ -64,10 +64,18 @@ set RUN_LIVE_WEATHER_TESTS=true
 python run_tests.py
 ```
 
-You can also run the scraper as a small CLI tool without going through pytest:
+For interview review, provide only the city and country. The CLI requests the full supported 10-day range by default, and built-in city targets use their configured AccuWeather 10-day URL directly:
 
 ```bash
 python -m weather run --city "Ho Chi Minh City" --country Vietnam
+```
+
+The command writes the extracted records to `data/weather_data.csv`, `data/weather_data.json`, and a timestamped HTML summary report under `reports/`.
+
+To make the 10-day behavior explicit while debugging, you can pass the same defaults yourself:
+
+```bash
+python -m weather run --city "Ho Chi Minh City" --country Vietnam --forecast-days 10 --parallel-day-workers 1 --headless true
 ```
 
 Useful CLI options:

@@ -265,7 +265,11 @@ def test_weather_scraper_opens_configured_city_url_without_homepage_search(monke
 
     monkeypatch.setattr("services.weather_scraper.DailyForecastPage", FakeDailyForecastPage)
     monkeypatch.setattr("config.settings.CITY_TARGETS", [
-        CityTarget("Ho Chi Minh City", "Vietnam", "https://example.com/hcm")
+        CityTarget(
+            "Ho Chi Minh City",
+            "Vietnam",
+            "https://example.com/hcm/weather-forecast/123",
+        )
     ])
     monkeypatch.setattr("services.weather_scraper.write_csv", lambda records, path: tmp_path / "weather_data.csv")
     monkeypatch.setattr("services.weather_scraper.write_json", lambda records, path: tmp_path / "weather_data.json")
@@ -276,7 +280,7 @@ def test_weather_scraper_opens_configured_city_url_without_homepage_search(monke
 
     WeatherScraper(page=None, city="Ho Chi Minh City", country="Vietnam", location_url="").run()
 
-    assert opened_urls == ["https://example.com/hcm"]
+    assert opened_urls == ["https://example.com/hcm/10-day-weather-forecast/123"]
 
 
 def test_weather_scraper_falls_back_to_configured_url_after_search_failure(monkeypatch, tmp_path):
@@ -323,7 +327,7 @@ def test_weather_scraper_falls_back_to_configured_url_after_search_failure(monke
         def take_screenshot(self, path):
             return path
 
-    configured_urls = iter([None, "https://example.com/hcm"])
+    configured_urls = iter([None, "https://example.com/hcm/weather-forecast/123"])
     monkeypatch.setattr("services.weather_scraper.DailyForecastPage", FakeDailyForecastPage)
     monkeypatch.setattr(WeatherScraper, "_configured_location_url", lambda self: next(configured_urls))
     monkeypatch.setattr("config.settings.CITY_TARGETS", [
@@ -338,7 +342,19 @@ def test_weather_scraper_falls_back_to_configured_url_after_search_failure(monke
 
     WeatherScraper(page=None, city="Ho Chi Minh City", country="Vietnam", location_url="").run()
 
-    assert opened_urls == ["https://example.com/hcm"]
+    assert opened_urls == ["https://example.com/hcm/10-day-weather-forecast/123"]
+
+
+def test_ten_day_url_is_built_from_configured_location_url():
+    assert WeatherScraper._ten_day_url_from_location_url(
+        "https://example.com/hcm/weather-forecast/123"
+    ) == "https://example.com/hcm/10-day-weather-forecast/123"
+    assert WeatherScraper._ten_day_url_from_location_url(
+        "https://example.com/hcm/daily-weather-forecast/123"
+    ) == "https://example.com/hcm/10-day-weather-forecast/123"
+    assert WeatherScraper._ten_day_url_from_location_url(
+        "https://example.com/hcm/10-day-weather-forecast/123"
+    ) == "https://example.com/hcm/10-day-weather-forecast/123"
 
 
 def test_expected_dates_are_built_from_forecast_range():

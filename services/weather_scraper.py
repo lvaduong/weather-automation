@@ -123,13 +123,14 @@ class WeatherScraper:
             else:
                 fallback_url = self._configured_location_url()
                 if fallback_url:
+                    ten_day_url = self._ten_day_url_from_location_url(fallback_url)
                     self.logger.info(
-                        "Using configured city URL for %s, %s: %s",
+                        "Using configured 10-day city URL for %s, %s: %s",
                         self.city,
                         self.country,
-                        fallback_url,
+                        ten_day_url,
                     )
-                    page.open_location_url(fallback_url)
+                    page.open_location_url(ten_day_url)
                 else:
                     self._open_location_from_homepage_search(page)
             try:
@@ -199,21 +200,23 @@ class WeatherScraper:
                 fallback_url = self._configured_location_url()
                 if not fallback_url:
                     raise RuntimeError(f"Search did not select a city page: {current_url}")
+                ten_day_url = self._ten_day_url_from_location_url(fallback_url)
                 self.logger.warning(
-                    "Search did not select a forecast page; opening configured city URL instead: %s",
-                    fallback_url,
+                    "Search did not select a forecast page; opening configured 10-day city URL instead: %s",
+                    ten_day_url,
                 )
-                page.open_location_url(fallback_url)
+                page.open_location_url(ten_day_url)
         except Exception as error:
             fallback_url = self._configured_location_url()
             if not fallback_url:
                 raise
+            ten_day_url = self._ten_day_url_from_location_url(fallback_url)
             self.logger.warning(
-                "Homepage search failed; opening configured city URL instead: %s. Cause: %s",
-                fallback_url,
+                "Homepage search failed; opening configured 10-day city URL instead: %s. Cause: %s",
+                ten_day_url,
                 error,
             )
-            page.open_location_url(fallback_url)
+            page.open_location_url(ten_day_url)
 
     @staticmethod
     def _page_url(page: DailyForecastPage) -> str:
@@ -262,6 +265,16 @@ class WeatherScraper:
             if target.name.lower() == city and target.country.lower() == country:
                 return target.location_url
         return None
+
+    @staticmethod
+    def _ten_day_url_from_location_url(location_url: str) -> str:
+        if "/10-day-weather-forecast/" in location_url:
+            return location_url
+        if "/daily-weather-forecast/" in location_url:
+            return location_url.replace("/daily-weather-forecast/", "/10-day-weather-forecast/")
+        if "/weather-forecast/" in location_url:
+            return location_url.replace("/weather-forecast/", "/10-day-weather-forecast/")
+        return location_url
 
     def _scrape_detail_urls_parallel(self, detail_urls: list[str]) -> list[WeatherRecord]:
         if not detail_urls:
