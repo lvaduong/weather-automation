@@ -25,7 +25,6 @@ jobs:
 
       - name: Run tests
         env:
-          RUN_LIVE_WEATHER_TESTS: "1"
           HEADLESS: "true"
           CITY: Ho Chi Minh City
           COUNTRY: Vietnam
