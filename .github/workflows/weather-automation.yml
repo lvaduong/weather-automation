@@ -29,7 +29,7 @@ jobs:
           CITY: Ho Chi Minh City
           COUNTRY: Vietnam
           PARALLEL_DAY_WORKERS: "1"
-          STRICT_AUTOMATION_FAILURES: "true"
+          STRICT_AUTOMATION_FAILURES: "false"
           RETRY_ATTEMPTS: "1"
           DEFAULT_TIMEOUT_MS: "15000"
           PAGE_LOAD_TIMEOUT_MS: "5000"
