@@ -30,6 +30,19 @@ def browser_context_args(browser_context_args):
 
 
 @pytest.fixture(autouse=True)
+def stable_unit_settings(request, monkeypatch):
+    if request.node.get_closest_marker("live"):
+        return None
+
+    monkeypatch.setattr(settings, "DEFAULT_TIMEOUT_MS", 30000)
+    monkeypatch.setattr(settings, "PAGE_LOAD_TIMEOUT_MS", 10000)
+    monkeypatch.setattr(settings, "SCREENSHOT_TIMEOUT_MS", 5000)
+    monkeypatch.setattr(settings, "RETRY_ATTEMPTS", 3)
+    monkeypatch.setattr(settings, "RETRY_DELAY_MS", 2000)
+    return None
+
+
+@pytest.fixture(autouse=True)
 def browser_stealth_init(request):
     if "page" not in request.fixturenames:
         return None
