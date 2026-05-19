@@ -100,32 +100,15 @@ def run_weather(args: argparse.Namespace) -> int:
     try:
         with sync_playwright() as playwright:
             from config import settings
+            from utils.browser_config import (
+                apply_stealth_context,
+                browser_context_options,
+                launch_browser,
+            )
 
-            browser = playwright.chromium.launch(
-                headless=settings.HEADLESS,
-                args=[
-                    "--incognito",
-                    "--disable-blink-features=AutomationControlled",
-                    "--disable-http2",
-                    "--disable-quic",
-                    "--start-maximized",
-                ],
-            )
-            context = browser.new_context(
-                ignore_https_errors=True,
-                no_viewport=True,
-                locale="en-US",
-                timezone_id="Asia/Bangkok",
-                extra_http_headers={
-                    "Cache-Control": "no-cache",
-                    "Pragma": "no-cache",
-                },
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/130.0.0.0 Safari/537.36"
-                ),
-            )
+            browser = launch_browser(playwright.chromium)
+            context = browser.new_context(**browser_context_options())
+            apply_stealth_context(context)
             page = context.new_page()
             try:
                 scraper = WeatherScraper(page)

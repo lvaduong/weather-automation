@@ -18,6 +18,7 @@ class BasePage:
         self.page = page
         self.logger = get_logger(self.__class__.__name__)
         self.current_url = getattr(page, "url", "")
+        self.loaded_via_http_fallback = False
         self.page.set_default_timeout(settings.DEFAULT_TIMEOUT_MS)
 
     def wait_for_page_loaded(self) -> None:
@@ -45,10 +46,11 @@ class BasePage:
             try:
                 response = self.page.goto(url, wait_until="commit")
                 self.current_url = getattr(self.page, "url", url)
+                self.loaded_via_http_fallback = False
                 self.wait_for_page_loaded()
                 return response
             except Exception as browser_error:
-                if not self._can_fallback_to_http(url):
+                if settings.STRICT_AUTOMATION_FAILURES or not self._can_fallback_to_http(url):
                     raise
                 self.logger.warning(
                     "Browser navigation did not commit; loading HTML over HTTP fallback: %s",
@@ -76,6 +78,7 @@ class BasePage:
         response.raise_for_status()
         self._set_static_fallback_content(response.text, url)
         self.current_url = response.url
+        self.loaded_via_http_fallback = True
         self.wait_for_page_loaded()
         return response
 
@@ -91,27 +94,26 @@ class BasePage:
             self.page.set_content(fallback_html, wait_until="domcontentloaded")
 
     def _recover_static_fallback_page(self) -> None:
+        context = getattr(self.page, "context", None)
+        if context is not None:
+            try:
+                fresh_page = context.new_page()
+                fresh_page.set_default_timeout(settings.DEFAULT_TIMEOUT_MS)
+                try:
+                    self.page.close()
+                except Exception:
+                    pass
+                self.page = fresh_page
+                self.current_url = getattr(fresh_page, "url", "")
+                return
+            except Exception as new_page_error:
+                self.logger.info("Could not create fresh page for HTTP fallback: %s", new_page_error)
+
         try:
             self.page.evaluate("window.stop()")
             return
         except Exception as stop_error:
             self.logger.info("Could not stop stalled page before HTTP fallback: %s", stop_error)
-
-        context = getattr(self.page, "context", None)
-        if context is None:
-            return
-
-        try:
-            fresh_page = context.new_page()
-            fresh_page.set_default_timeout(settings.DEFAULT_TIMEOUT_MS)
-            try:
-                self.page.close()
-            except Exception:
-                pass
-            self.page = fresh_page
-            self.current_url = getattr(fresh_page, "url", "")
-        except Exception as new_page_error:
-            self.logger.info("Could not create fresh page for HTTP fallback: %s", new_page_error)
 
     @staticmethod
     def _can_fallback_to_http(url: str) -> bool:

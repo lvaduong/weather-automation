@@ -21,14 +21,19 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          playwright install chromium
+          playwright install --with-deps chromium
 
       - name: Run tests
         env:
-          HEADLESS: "true"
+          HEADLESS: "false"
           CITY: Ho Chi Minh City
           COUNTRY: Vietnam
-        run: python run_tests.py
+          PARALLEL_DAY_WORKERS: "1"
+          STRICT_AUTOMATION_FAILURES: "true"
+          RETRY_ATTEMPTS: "1"
+          DEFAULT_TIMEOUT_MS: "15000"
+          PAGE_LOAD_TIMEOUT_MS: "5000"
+        run: xvfb-run -a python run_tests.py
 
       - name: Upload report
         uses: actions/upload-artifact@v4

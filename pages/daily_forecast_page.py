@@ -158,6 +158,8 @@ class DailyForecastPage(BasePage):
                     records.extend(self._records_from_card_text(text))
             except Exception as error:
                 self.logger.warning("Forecast card %s extraction failed: %s", index, error)
+                if settings.STRICT_AUTOMATION_FAILURES:
+                    raise
                 records.append(
                     WeatherRecord(
                         date=f"Card {index + 1}",
@@ -217,6 +219,8 @@ class DailyForecastPage(BasePage):
                 page_records = self.extract_weather_records_with_retry()
             except Exception as error:
                 self.logger.warning("Daily forecast day=%s extraction failed: %s", day_number, error)
+                if settings.STRICT_AUTOMATION_FAILURES:
+                    raise
                 consecutive_empty_pages += 1
                 if consecutive_empty_pages >= 3:
                     break
@@ -261,6 +265,16 @@ class DailyForecastPage(BasePage):
         ) from last_error
 
     def extract_weather_records_from_ten_day_details(self, max_days: int) -> list[WeatherRecord]:
+        fallback_records_by_url = self._ten_day_card_records_by_detail_url(max_days)
+        if getattr(self, "loaded_via_http_fallback", False) and fallback_records_by_url:
+            self.logger.info("Using 10-day card records from HTTP fallback page")
+            records = [
+                record
+                for url_records in fallback_records_by_url.values()
+                for record in url_records
+            ]
+            return self._limit_records_by_unique_dates(records, max_days)
+
         detail_urls = self.collect_ten_day_detail_urls(max_days)
         records: list[WeatherRecord] = []
 
@@ -272,9 +286,45 @@ class DailyForecastPage(BasePage):
                 len(detail_records),
                 index + 1,
             )
+            if not detail_records:
+                detail_records = fallback_records_by_url.get(detail_url, [])
+                if detail_records:
+                    self.logger.info(
+                        "Using 10-day card fallback record for card %s",
+                        index + 1,
+                    )
             records.extend(detail_records)
 
         return records
+
+    def _ten_day_card_records_by_detail_url(self, max_days: int) -> dict[str, list[WeatherRecord]]:
+        records_by_url: dict[str, list[WeatherRecord]] = {}
+        target_count = min(max_days, self._ten_day_detail_link_count())
+        for selector in self.TEN_DAY_CARD_LINKS:
+            links = self.page.locator(selector)
+            for index in range(links.count()):
+                if len(records_by_url) >= target_count:
+                    return records_by_url
+                href = links.nth(index).get_attribute("href")
+                if not href:
+                    continue
+                url = urljoin(self._current_url(), href)
+                text = self._clean_text(links.nth(index).inner_text(timeout=5000))
+                records = self._records_from_ten_day_card_text(text)
+                if records:
+                    records_by_url[url] = records
+            if records_by_url:
+                break
+        return records_by_url
+
+    def _records_from_ten_day_card_text(self, text: str) -> list[WeatherRecord]:
+        if self._is_half_day_card_text(text):
+            return [self._record_from_half_day_text(text)]
+        if self._is_expanded_daily_card_text(text):
+            return [self._record_from_expanded_daily_text(text)]
+        if self._is_compact_ten_day_card_text(text):
+            return [self._record_from_compact_ten_day_text(text)]
+        return self._records_from_card_text(text)
 
     def collect_ten_day_detail_urls(self, max_days: int) -> list[str]:
         urls: list[str] = []
@@ -391,6 +441,11 @@ class DailyForecastPage(BasePage):
         fallback.click()
 
     def _open_ten_day_link_or_url(self) -> None:
+        current_url = self._current_url()
+        if self._is_ten_day_url(current_url):
+            self.logger.info("Already on 10-Day forecast URL: %s", current_url)
+            return
+
         ten_day_url = self._ten_day_url_from_current_url()
         if ten_day_url:
             self.logger.info("Navigating directly to 10-Day forecast URL: %s", ten_day_url)
@@ -535,6 +590,8 @@ class DailyForecastPage(BasePage):
             return self._extract_time_of_day_section(page_text, label, labels)
         except Exception as error:
             self.logger.warning("Could not click %s section: %s", label, error)
+            if settings.STRICT_AUTOMATION_FAILURES:
+                raise
             return ""
 
     def _time_of_day_locator(self, label: str):
@@ -765,9 +822,10 @@ class DailyForecastPage(BasePage):
             displayed_celsius,
             self._extract_compact_daily_weather(text),
             None,
-            self._extract_ten_day_percentage(text),
+            None,
             self._extract_precipitation_probability(text),
             require_realfeel=False,
+            require_humidity=False,
         )
         record.low_temperature_c_displayed = low_celsius
         record.low_temperature_f = celsius_to_fahrenheit(low_celsius)
@@ -938,7 +996,12 @@ class DailyForecastPage(BasePage):
             text,
             re.I,
         )
-        return DailyForecastPage._clean_text(match.group(1)) if match else DailyForecastPage._extract_weather(text)
+        if not match:
+            return DailyForecastPage._extract_weather(text)
+        weather = DailyForecastPage._clean_text(match.group(1))
+        if re.fullmatch(r"\d{1,3}\s*%", weather):
+            return DailyForecastPage._extract_weather(text)
+        return weather
 
     @staticmethod
     def _extract_precipitation_probability(text: str) -> Optional[int]:

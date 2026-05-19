@@ -88,6 +88,8 @@ def test_take_screenshot_uses_short_viewport_capture(tmp_path):
 
 
 def test_goto_loads_html_fallback_when_browser_navigation_never_commits(monkeypatch):
+    monkeypatch.setattr("config.settings.STRICT_AUTOMATION_FAILURES", False)
+
     class FailingBrowserPage(FakePage):
         def goto(self, url, wait_until):
             self.goto_calls += 1
@@ -115,11 +117,14 @@ def test_goto_loads_html_fallback_when_browser_navigation_never_commits(monkeypa
 
     assert response.url == "https://www.accuweather.com/en/test"
     assert page.current_url == "https://www.accuweather.com/en/test"
+    assert page.loaded_via_http_fallback is True
     assert captured_request["kwargs"]["verify"] is False
     assert '<base href="https://www.accuweather.com/en/test">' in fake_page.content["html"]
 
 
 def test_html_fallback_strips_blocking_assets_before_set_content(monkeypatch):
+    monkeypatch.setattr("config.settings.STRICT_AUTOMATION_FAILURES", False)
+
     class FailingBrowserPage(FakePage):
         def goto(self, url, wait_until):
             self.goto_calls += 1
@@ -159,6 +164,8 @@ def test_html_fallback_strips_blocking_assets_before_set_content(monkeypatch):
 
 
 def test_html_fallback_uses_fresh_page_when_stalled_page_cannot_be_stopped(monkeypatch):
+    monkeypatch.setattr("config.settings.STRICT_AUTOMATION_FAILURES", False)
+
     class FreshFallbackPage(FakePage):
         def __init__(self):
             super().__init__()

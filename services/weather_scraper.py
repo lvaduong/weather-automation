@@ -13,6 +13,7 @@ from models.city_target import CityTarget
 from models.weather_record import WeatherRecord
 from pages.daily_forecast_page import DailyForecastPage
 from services.report_service import ReportService
+from utils.browser_config import apply_stealth_context, browser_context_options, launch_browser
 from utils.file_writer import write_csv, write_json
 from utils.logger import get_logger
 
@@ -23,31 +24,9 @@ def _scrape_detail_url_batch(detail_urls: list[str]) -> list[WeatherRecord]:
     logger = get_logger("ParallelDayWorker")
     records: list[WeatherRecord] = []
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(
-            headless=settings.HEADLESS,
-            args=[
-                "--incognito",
-                "--disable-blink-features=AutomationControlled",
-                "--disable-http2",
-                "--disable-quic",
-                "--start-maximized",
-            ],
-        )
-        context = browser.new_context(
-            ignore_https_errors=True,
-            no_viewport=True,
-            locale="en-US",
-            timezone_id="Asia/Bangkok",
-            extra_http_headers={
-                "Cache-Control": "no-cache",
-                "Pragma": "no-cache",
-            },
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/130.0.0.0 Safari/537.36"
-            ),
-        )
+        browser = launch_browser(playwright.chromium)
+        context = browser.new_context(**browser_context_options())
+        apply_stealth_context(context)
         page = context.new_page()
         forecast_page = DailyForecastPage(page)
         for detail_url in detail_urls:
@@ -58,6 +37,8 @@ def _scrape_detail_url_batch(detail_urls: list[str]) -> list[WeatherRecord]:
                 records.extend(day_records)
             except Exception as error:
                 logger.warning("Parallel detail extraction failed for %s: %s", detail_url, error)
+                if settings.STRICT_AUTOMATION_FAILURES:
+                    raise
                 records.append(
                     WeatherRecord(
                         date=detail_url,
@@ -133,15 +114,13 @@ class WeatherScraper:
                     page.open_location_url(ten_day_url)
                 else:
                     self._open_location_from_homepage_search(page)
-            try:
-                page.open_daily_forecast()
-            except Exception as error:
-                self.logger.warning(
-                    "Failed to open 10-day forecast after retries: %s. Continuing with available page content.",
-                    error,
-                )
+            page.open_daily_forecast()
             forecast_range = page.ensure_ten_day_forecast_range()
-            if settings.PARALLEL_DAY_WORKERS > 1 and page._is_ten_day_url(self._page_url(page)):
+            if (
+                settings.PARALLEL_DAY_WORKERS > 1
+                and page._is_ten_day_url(self._page_url(page))
+                and not getattr(page, "loaded_via_http_fallback", False)
+            ):
                 detail_urls = page.collect_ten_day_detail_urls(settings.FORECAST_DAYS)
                 records = self._scrape_detail_urls_parallel(detail_urls)
             else:

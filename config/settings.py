@@ -51,6 +51,8 @@ def parse_forecast_days(raw_value: str | None) -> int:
 
 
 HEADLESS = parse_bool(os.getenv("HEADLESS"), default=True)
+STRICT_AUTOMATION_FAILURES = parse_bool(os.getenv("STRICT_AUTOMATION_FAILURES"), default=False)
+BROWSER_CHANNEL = os.getenv("BROWSER_CHANNEL", "chrome").strip()
 FORECAST_DAYS = parse_forecast_days(os.getenv("FORECAST_DAYS", str(MAX_FORECAST_DAYS)))
 PARALLEL_DAY_WORKERS = parse_positive_int(os.getenv("PARALLEL_DAY_WORKERS"), 3, "PARALLEL_DAY_WORKERS")
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", ROOT_DIR / "data"))

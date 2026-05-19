@@ -352,9 +352,22 @@ def test_compact_ten_day_card_text_extracts_summary_fields():
     assert record.low_temperature_f == 80.6
     assert record.weather == "Mostly cloudy and very warm; a thunderstorm in spots in the afternoon"
     assert record.precipitation_probability == 40
-    assert record.humidity == 40
+    assert record.humidity is None
     assert record.validation_status == "PASSED"
     assert record.error_message is None
+
+
+def test_compact_ten_day_card_does_not_use_precipitation_as_weather_or_humidity():
+    page = DailyForecastPage.__new__(DailyForecastPage)
+    text = "TUE 5/19 33Â° /27Â° 100%"
+
+    record = page._record_from_compact_ten_day_text(text)
+
+    assert record.weather is None
+    assert record.humidity is None
+    assert record.precipitation_probability == 100
+    assert record.validation_status == "PASSED"
+    assert record.error_message == "Missing fields: weather"
 
 
 def test_ten_day_url_is_created_from_location_or_daily_forecast_url():
@@ -534,6 +547,99 @@ def test_open_ten_day_uses_direct_url_before_menu_click():
         )
     ]
     assert fake_page.locators == []
+
+
+def test_open_ten_day_does_not_reopen_current_ten_day_url():
+    page = DailyForecastPage.__new__(DailyForecastPage)
+
+    class FakePage:
+        url = "about:blank"
+
+        def __init__(self):
+            self.locators = []
+            self.goto_calls = []
+
+        def locator(self, selector):
+            self.locators.append(selector)
+            raise AssertionError("locator lookup should not be needed")
+
+    fake_page = FakePage()
+    page.page = fake_page
+    page.current_url = "https://www.accuweather.com/en/vn/city/1/10-day-weather-forecast/1"
+    page.logger = type("Logger", (), {"info": lambda self, *args, **kwargs: None})()
+    page.goto = lambda url, action_name: fake_page.goto_calls.append((url, action_name))
+
+    page._open_ten_day_link_or_url()
+
+    assert fake_page.goto_calls == []
+    assert fake_page.locators == []
+
+
+def test_ten_day_detail_extraction_uses_card_record_when_detail_page_is_empty():
+    page = DailyForecastPage.__new__(DailyForecastPage)
+    fallback_record = WeatherRecord(
+        date="5/19",
+        period="Day",
+        temperature_f=95.0,
+        temperature_c_calculated=35.0,
+        temperature_c_displayed=35.0,
+        weather="Cloudy",
+        realfeel_f=None,
+        humidity=None,
+        validation_status="PASSED",
+    )
+    opened_urls = []
+
+    page.collect_ten_day_detail_urls = lambda max_days: ["https://example.com/day/1"]
+    page._ten_day_card_records_by_detail_url = lambda max_days: {
+        "https://example.com/day/1": [fallback_record]
+    }
+    page.goto = lambda url, action_name: opened_urls.append((url, action_name))
+    page.extract_detail_weather_records_with_retry = lambda: []
+    page.logger = type("Logger", (), {"info": lambda self, *args, **kwargs: None})()
+
+    records = page.extract_weather_records_from_ten_day_details(1)
+
+    assert records == [fallback_record]
+    assert opened_urls == [("https://example.com/day/1", "open 10-day detail card 1")]
+
+
+def test_ten_day_http_fallback_uses_card_records_without_opening_detail_pages():
+    page = DailyForecastPage.__new__(DailyForecastPage)
+    first_record = WeatherRecord(
+        date="5/19",
+        period="Day",
+        temperature_f=95.0,
+        temperature_c_calculated=35.0,
+        temperature_c_displayed=35.0,
+        weather="Cloudy",
+        realfeel_f=None,
+        humidity=None,
+        validation_status="PASSED",
+    )
+    second_record = WeatherRecord(
+        date="5/20",
+        period="Day",
+        temperature_f=96.8,
+        temperature_c_calculated=36.0,
+        temperature_c_displayed=36.0,
+        weather="Sunny",
+        realfeel_f=None,
+        humidity=None,
+        validation_status="PASSED",
+    )
+    page.loaded_via_http_fallback = True
+    page._ten_day_card_records_by_detail_url = lambda max_days: {
+        "https://example.com/day/1": [first_record],
+        "https://example.com/day/2": [second_record],
+    }
+    page.collect_ten_day_detail_urls = lambda max_days: pytest.fail("detail URLs should not be opened")
+    page.goto = lambda url, action_name: pytest.fail("detail pages should not be opened")
+    page.logger = type("Logger", (), {"info": lambda self, *args, **kwargs: None})()
+
+    records = page.extract_weather_records_from_ten_day_details(2)
+
+    assert records == [first_record, second_record]
 
 
 def test_records_are_limited_by_unique_10_day_dates():

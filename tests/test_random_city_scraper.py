@@ -1,6 +1,7 @@
 from models.city_target import CityTarget
 from models.weather_record import WeatherRecord
 from services.weather_scraper import RandomCityWeatherScraper, WeatherScraper
+import pytest
 
 
 def freeze_weather_scraper_time(monkeypatch, timestamp="20260515_185449_123456"):
@@ -139,7 +140,7 @@ def test_summary_report_path_includes_city_and_timestamp(monkeypatch):
     assert report_path.name == "summary_report_ho-chi-minh-city-vietnam_20260515_185449_123456.html"
 
 
-def test_weather_scraper_continues_when_open_daily_forecast_fails(monkeypatch, tmp_path):
+def test_weather_scraper_fails_when_open_daily_forecast_fails(monkeypatch, tmp_path):
     written_records = {}
 
     class FakeDailyForecastPage:
@@ -193,19 +194,10 @@ def test_weather_scraper_continues_when_open_daily_forecast_fails(monkeypatch, t
     )
 
     scraper = WeatherScraper(page=None, location_url="https://example.com")
-    result = scraper.run()
+    with pytest.raises(RuntimeError, match="open 10-day forecast failed after retries"):
+        scraper.run()
 
-    assert result["record_count"] == 1
-    assert result["forecast_range"] == "May 15 - May 24"
-    assert result["date_range_valid"] is True
-    assert result["csv_path"].name == "weather_data.csv"
-    assert result["json_path"].name == "weather_data.json"
-    assert result["report_path"].name.startswith("summary_report_ho-chi-minh-city-vietnam_")
-    assert result["report_path"].suffix == ".html"
-    assert written_records["csv"][0].city == "Ho Chi Minh City, Vietnam"
-    assert written_records["csv"][0].extracted_at
-    assert written_records["json"][0].city == "Ho Chi Minh City, Vietnam"
-    assert written_records["json"][0].extracted_at == written_records["csv"][0].extracted_at
+    assert written_records == {}
 
 
 def test_weather_scraper_opens_configured_city_url_without_homepage_search(monkeypatch, tmp_path):
@@ -355,6 +347,70 @@ def test_ten_day_url_is_built_from_configured_location_url():
     assert WeatherScraper._ten_day_url_from_location_url(
         "https://example.com/hcm/10-day-weather-forecast/123"
     ) == "https://example.com/hcm/10-day-weather-forecast/123"
+
+
+def test_weather_scraper_skips_parallel_detail_workers_after_http_fallback(monkeypatch, tmp_path):
+    extracted_records = [
+        WeatherRecord(
+            date="5/15",
+            period="Day",
+            temperature_f=95.0,
+            temperature_c_calculated=35.0,
+            temperature_c_displayed=35.0,
+            weather="Cloudy",
+            realfeel_f=None,
+            humidity=None,
+            validation_status="PASSED",
+        )
+    ]
+
+    class FakeDailyForecastPage:
+        def __init__(self, page):
+            self.page = type(
+                "FakePage",
+                (),
+                {"url": "https://example.com/hcm/10-day-weather-forecast/123"},
+            )()
+            self.loaded_via_http_fallback = True
+
+        def open_location_url(self, location_url: str) -> None:
+            self.page.url = location_url
+
+        def open_daily_forecast(self):
+            pass
+
+        def ensure_ten_day_forecast_range(self):
+            return "May 15 - May 24"
+
+        def _is_ten_day_url(self, url: str) -> bool:
+            return True
+
+        def collect_ten_day_detail_urls(self, max_days):
+            raise AssertionError("parallel detail URLs should not be collected")
+
+        def extract_all_available_weather_records(self, max_days):
+            return extracted_records
+
+        def take_screenshot(self, path):
+            return path
+
+    monkeypatch.setattr("config.settings.PARALLEL_DAY_WORKERS", 3)
+    monkeypatch.setattr("services.weather_scraper.DailyForecastPage", FakeDailyForecastPage)
+    monkeypatch.setattr("services.weather_scraper.write_csv", lambda records, path: tmp_path / "weather_data.csv")
+    monkeypatch.setattr("services.weather_scraper.write_json", lambda records, path: tmp_path / "weather_data.json")
+    monkeypatch.setattr(
+        "services.weather_scraper.ReportService.generate_summary",
+        lambda self, records, city, forecast_range, missing_dates, missing_sections, output_path: output_path,
+    )
+
+    result = WeatherScraper(
+        page=None,
+        city="Ho Chi Minh City",
+        country="Vietnam",
+        location_url="https://example.com/hcm/10-day-weather-forecast/123",
+    ).run()
+
+    assert result["record_count"] == 1
 
 
 def test_expected_dates_are_built_from_forecast_range():

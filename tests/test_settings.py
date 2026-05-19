@@ -1,5 +1,6 @@
 import pytest
 
+from config import settings
 from config.settings import parse_bool, parse_forecast_days, parse_positive_int
 
 
@@ -36,6 +37,14 @@ def test_parse_bool_accepts_disabled_values(value):
 def test_parse_bool_uses_default_for_blank_values():
     assert parse_bool(None, default=True)
     assert not parse_bool("", default=False)
+
+
+def test_strict_automation_failures_defaults_to_resilient_mode():
+    assert settings.STRICT_AUTOMATION_FAILURES is False
+
+
+def test_browser_channel_defaults_to_system_chrome():
+    assert settings.BROWSER_CHANNEL == "chrome"
 
 
 def test_parse_bool_rejects_unknown_values():

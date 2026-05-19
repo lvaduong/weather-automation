@@ -106,6 +106,8 @@ The summary report includes a data-completeness section that lists missing forec
 | `CITY` | `Ho Chi Minh City` | Default city |
 | `COUNTRY` | `Vietnam` | Default country |
 | `HEADLESS` | `true` | Accepts `true`, `false`, `1`, `0`, `yes`, `no`, `on`, `off` |
+| `STRICT_AUTOMATION_FAILURES` | `false` | Set to `true` to fail immediately on navigation, locator, click, or extraction failures instead of using fallback data |
+| `BROWSER_CHANNEL` | `chrome` | Prefer installed Chrome for live scraping; leave blank to use bundled Playwright Chromium |
 | `TEMPERATURE_TOLERANCE` | `1.0` | Celsius validation tolerance |
 | `FORECAST_DAYS` | `10` | Maximum supported value is `10` |
 | `PARALLEL_DAY_WORKERS` | `3` | Set to `1` for sequential click-through debugging |
