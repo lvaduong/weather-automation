@@ -59,6 +59,7 @@ class BasePage:
         return self.retry(action, action_name)
 
     def _goto_via_http_fallback(self, url: str):
+        self._recover_static_fallback_page()
         response = requests.get(
             url,
             timeout=settings.DEFAULT_TIMEOUT_MS / 1000,
@@ -89,6 +90,29 @@ class BasePage:
         except TypeError:
             self.page.set_content(fallback_html, wait_until="domcontentloaded")
 
+    def _recover_static_fallback_page(self) -> None:
+        try:
+            self.page.evaluate("window.stop()")
+            return
+        except Exception as stop_error:
+            self.logger.info("Could not stop stalled page before HTTP fallback: %s", stop_error)
+
+        context = getattr(self.page, "context", None)
+        if context is None:
+            return
+
+        try:
+            fresh_page = context.new_page()
+            fresh_page.set_default_timeout(settings.DEFAULT_TIMEOUT_MS)
+            try:
+                self.page.close()
+            except Exception:
+                pass
+            self.page = fresh_page
+            self.current_url = getattr(fresh_page, "url", "")
+        except Exception as new_page_error:
+            self.logger.info("Could not create fresh page for HTTP fallback: %s", new_page_error)
+
     @staticmethod
     def _can_fallback_to_http(url: str) -> bool:
         return urlsplit(url).scheme in {"http", "https"}
@@ -110,6 +134,14 @@ class BasePage:
         html = re.sub(r"<script\b[^>]*>.*?</script>", "", html, flags=re.I | re.S)
         html = re.sub(r"<style\b[^>]*>.*?</style>", "", html, flags=re.I | re.S)
         html = re.sub(r"<link\b[^>]*rel=[\"']?(?:stylesheet|preload|preconnect)[^>]*>", "", html, flags=re.I)
+        html = re.sub(
+            r"<(?:iframe|object|embed|picture|video|audio)\b[^>]*>.*?"
+            r"</(?:iframe|object|embed|picture|video|audio)>",
+            "",
+            html,
+            flags=re.I | re.S,
+        )
+        html = re.sub(r"<(?:img|source)\b[^>]*>", "", html, flags=re.I)
         return html
 
     def retry(self, action: Callable[[], T], action_name: str) -> T:

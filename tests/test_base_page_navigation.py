@@ -156,3 +156,53 @@ def test_html_fallback_strips_blocking_assets_before_set_content(monkeypatch):
     assert "rel=\"stylesheet\"" not in html
     assert "daily-forecast-card" in html
     assert fake_page.content["timeout"] == 10000
+
+
+def test_html_fallback_uses_fresh_page_when_stalled_page_cannot_be_stopped(monkeypatch):
+    class FreshFallbackPage(FakePage):
+        def __init__(self):
+            super().__init__()
+            self.closed = False
+
+        def set_content(self, html, wait_until, timeout=None):
+            self.content = {"html": html, "wait_until": wait_until, "timeout": timeout}
+
+    class FakeContext:
+        def __init__(self):
+            self.fresh_page = FreshFallbackPage()
+
+        def new_page(self):
+            return self.fresh_page
+
+    class StalledBrowserPage(FakePage):
+        def __init__(self):
+            super().__init__()
+            self.context = FakeContext()
+            self.closed = False
+
+        def goto(self, url, wait_until):
+            self.goto_calls += 1
+            raise RuntimeError("Page.goto: Timeout 30000ms exceeded")
+
+        def evaluate(self, script):
+            raise RuntimeError("stalled navigation")
+
+        def close(self):
+            self.closed = True
+
+    class FakeResponse:
+        url = "https://www.accuweather.com/en/test"
+        text = "<html><head></head><body><a class=\"daily-forecast-card\">Forecast</a></body></html>"
+
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr("pages.base_page.requests.get", lambda url, **kwargs: FakeResponse())
+    stalled_page = StalledBrowserPage()
+    page = BasePage(stalled_page)
+
+    page.goto("https://www.accuweather.com/en/test", "open AccuWeather page")
+
+    assert stalled_page.closed is True
+    assert page.page is stalled_page.context.fresh_page
+    assert "daily-forecast-card" in page.page.content["html"]
