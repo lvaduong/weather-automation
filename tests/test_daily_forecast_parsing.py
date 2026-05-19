@@ -674,7 +674,9 @@ def test_daily_url_day_parameter_preserves_existing_query_params():
     assert updated.endswith("?unit=c&lang=en&day=12")
 
 
-def test_extract_weather_records_with_retry_retries_transient_failure():
+def test_extract_weather_records_with_retry_retries_transient_failure(monkeypatch):
+    monkeypatch.setattr("config.settings.RETRY_ATTEMPTS", 3)
+
     class FakePage:
         def set_default_timeout(self, timeout):
             pass

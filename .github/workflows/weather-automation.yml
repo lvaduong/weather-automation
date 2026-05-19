@@ -21,11 +21,12 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          playwright install --with-deps chromium
+          playwright install --with-deps chromium chrome
 
       - name: Run tests
         env:
           HEADLESS: "false"
+          BROWSER_CHANNEL: "chrome"
           CITY: Ho Chi Minh City
           COUNTRY: Vietnam
           PARALLEL_DAY_WORKERS: "1"

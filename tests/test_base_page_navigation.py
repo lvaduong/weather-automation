@@ -32,7 +32,9 @@ class FakePage:
         self.content = {"html": html, "wait_until": wait_until}
 
 
-def test_goto_retries_transient_navigation_errors():
+def test_goto_retries_transient_navigation_errors(monkeypatch):
+    monkeypatch.setattr("config.settings.RETRY_ATTEMPTS", 3)
+
     fake_page = FakePage()
     page = BasePage(fake_page)
 
@@ -124,6 +126,7 @@ def test_goto_loads_html_fallback_when_browser_navigation_never_commits(monkeypa
 
 def test_html_fallback_strips_blocking_assets_before_set_content(monkeypatch):
     monkeypatch.setattr("config.settings.STRICT_AUTOMATION_FAILURES", False)
+    monkeypatch.setattr("config.settings.PAGE_LOAD_TIMEOUT_MS", 10000)
 
     class FailingBrowserPage(FakePage):
         def goto(self, url, wait_until):
